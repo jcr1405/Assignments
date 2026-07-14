@@ -9,11 +9,16 @@ st.set_page_config(page_title="AI Multiverse", layout="wide")
 st.title("🤖 AI Multiverse Chat")
 
 # ==========================================
-# TASK 1: UI Cleanup & TASK 3: Slider
+# TASK 1: Initialize the Memory Vault
+# ==========================================
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# ==========================================
+# Sidebar Settings Configuration
 # ==========================================
 st.sidebar.title("🛠️ App Settings")
 
-# TASK 2: Persona Expansion
 personalities = [
     "A panicked college student at 3 AM",
     "A 1920s Mafia Boss",
@@ -23,15 +28,11 @@ personalities = [
 ]
 
 selected_persona = st.sidebar.selectbox("Choose a Personality:", personalities)
-
-# TASK 3: Parameter Tuning (The Slider)
 intensity = st.sidebar.slider(
     "Intensity Level", min_value=1, max_value=10, value=5
 )
 
-# ==========================================
-# TASK 5: Dynamic Avatars (Control Flow)
-# ==========================================
+# Control flow to handle dynamic avatars based on chosen persona
 if selected_persona == "A panicked college student at 3 AM":
     bot_avatar = "☕"
 elif selected_persona == "A 1920s Mafia Boss":
@@ -46,20 +47,30 @@ else:
     bot_avatar = "🤖"
 
 # ==========================================
-# Main Chat UI & Logic
+# TASK 2: Render the Chat History
 # ==========================================
+# This loop runs on every refresh to draw existing messages from the vault
+for message in st.session_state.messages:
+    # Set the appropriate avatar based on the role
+    current_avatar = bot_avatar if message["role"] == "assistant" else None
 
-# User Input Field
-user_message = st.text_input("Type your message here...", key="chat_input")
-send_button = st.button("SEND")
+    with st.chat_message(message["role"], avatar=current_avatar):
+        st.write(message["content"])
 
-# TASK 4: Visual Upgrade (Chat Elements) & API Call
-if send_button and user_message:
-    # Render the user's message in a chat bubble
+# ==========================================
+# TASK 3 & 4: Upgrade Input UI & Save to Memory
+# ==========================================
+# Replacing text_input/button with native st.chat_input using the walrus operator
+if user_message := st.chat_input("Say something..."):
+
+    # 1. Render the new user message immediately to the UI
     with st.chat_message("user"):
         st.write(user_message)
 
-    # TASK 3: Prompt Engineering Update with f-string injecting personality and intensity
+    # 2. Save User Message to Session State Vault
+    st.session_state.messages.append({"role": "user", "content": user_message})
+
+    # Construct the foundational context injection prompt
     ai_instructions = (
         f"You are an AI roleplaying as: {selected_persona}. "
         f"On a scale of 1 to 10, your acting intensity level is {intensity}. "
@@ -69,16 +80,29 @@ if send_button and user_message:
     )
 
     try:
-        # Initialize the model and generate the content
         model = genai.GenerativeModel("gemini-1.5-flash")
-        
-        # Combining instructions and user query for the model
-        full_prompt = f"{ai_instructions}\n\nUser: {user_message}\nAI:"
+
+        # Building historical text structure out of the memory vault for the raw prompt call
+        # (This passes past conversational turns to the model along with the new query)
+        history_context = ""
+        for msg in st.session_state.messages:
+            history_context += f"\n{msg['role'].capitalize()}: {msg['content']}"
+
+        full_prompt = (
+            f"{ai_instructions}\n\nConversation History:{history_context}\nAI:"
+        )
+
+        # Generate Response
         response = model.generate_content(full_prompt)
 
-        # Render the AI's response using the native chat bubble and dynamic avatar
+        # 3. Render Assistant Response to UI
         with st.chat_message("assistant", avatar=bot_avatar):
             st.write(response.text)
+
+        # 4. Save Assistant Response to Session State Vault
+        st.session_state.messages.append(
+            {"role": "assistant", "content": response.text}
+        )
 
     except Exception as e:
         st.error(f"Error connecting to Gemini API: {e}")
